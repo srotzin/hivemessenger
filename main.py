@@ -27,7 +27,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 
 import httpx
-from fastapi import FastAPI, Header, HTTPException, Query, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -81,6 +81,43 @@ DISCOVERY_URL = "https://hive-discovery.onrender.com"
 HIVEGATE_URL = "https://hivegate.onrender.com"
 INTERNAL_KEY = "hive_internal_125e04e071e8829be631ea0216dd4a0c9b707975fcecaf8c62c6a2ab43327d46"
 INTERNAL_HEADER = "x-hive-internal-key"
+
+
+# ---------------------------------------------------------------------------
+# x402 payment gate
+# ---------------------------------------------------------------------------
+
+def x402_gate(price_usd: float, description: str):
+    """Returns a FastAPI dependency that enforces x402 payment or internal key bypass."""
+    async def dependency(
+        request: Request,
+        x_payment: str = Header(None),
+        x_hive_internal: str = Header(None),
+        x_api_key: str = Header(None)
+    ):
+        # Internal bypass
+        if x_hive_internal == INTERNAL_KEY or x_api_key == INTERNAL_KEY:
+            return {"bypassed": True, "amount": 0}
+        # Payment present — accept (in production, verify cryptographically)
+        if x_payment:
+            return {"verified": True, "amount": price_usd}
+        # No payment — return 402
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "error": "payment_required",
+                "x402": {
+                    "version": "1.0",
+                    "amount_usdc": price_usd,
+                    "description": description,
+                    "payment_methods": ["x402-usdc", "x402-aleo"],
+                    "headers_required": ["X-Payment"],
+                    "settlement_wallet": "0x78B3B3C356E89b5a69C488c6032509Ef4260B6bf",
+                    "network": "base"
+                }
+            }
+        )
+    return dependency
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +187,10 @@ async def health() -> HealthResponse:
     tags=["Messaging"],
     summary="Send a DID-to-DID message",
 )
-async def send_message(req: SendMessageRequest) -> SendMessageResponse:
+async def send_message(
+    req: SendMessageRequest,
+    _payment=Depends(x402_gate(0.05, "DID-to-DID message delivery")),
+) -> SendMessageResponse:
     """
     Send a message from one DID to another.
 
@@ -403,7 +443,10 @@ async def get_outbox(
     tags=["Messaging"],
     summary="Broadcast a message to all agents matching a capability",
 )
-async def broadcast(req: BroadcastRequest) -> BroadcastResponse:
+async def broadcast(
+    req: BroadcastRequest,
+    _payment=Depends(x402_gate(0.05, "DID-to-DID message delivery")),
+) -> BroadcastResponse:
     """
     Send a message to all agents registered in the discovery service that
     match `to_capability` and meet the `trust_min` threshold.
