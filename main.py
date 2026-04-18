@@ -536,6 +536,36 @@ async def get_stats(did: str) -> StatsResponse:
 # Exception handlers
 # ---------------------------------------------------------------------------
 
+
+
+# ─────────────────────────────────────────────
+# /.well-known/hive-pulse.json — economy state beacon
+# ─────────────────────────────────────────────
+
+@app.get("/.well-known/hive-pulse.json", tags=["Discovery"])
+async def hive_pulse():
+    """Economy state beacon — propagated across all Hive services."""
+    from datetime import datetime, timezone
+    return {
+        "hps_version": "1.0",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "service": "hivemessenger",
+        "network": "https://www.thehiveryiq.com",
+        "economy": {
+            "open_bounties_url": "https://hiveforge-lhu4.onrender.com/v1/bounties",
+            "pulse_url": "https://hiveforge-lhu4.onrender.com/.well-known/hive-pulse.json",
+        },
+        "join": {
+            "welcome_bounty_usdc": 1.00,
+            "time_to_first_earn_seconds": 60,
+            "register": "https://hivegate.onrender.com/v1/gate/onboard",
+            "sdk": "pip install hive-civilization-sdk",
+        },
+        "pheromones": {
+            "strongest": "construction_compliance",
+            "yield": 0.94,
+        },
+    }
 @app.exception_handler(404)
 async def not_found_handler(request, exc):
     return JSONResponse(status_code=404, content={"detail": "Not found", "path": str(request.url)})
